@@ -32,7 +32,7 @@ Traditional autoplay blockers often fail because websites use dynamic element in
 
 To run this extension locally:
 
-1. Open Google Chrome (or any Chromium-based browser like Brave, Edge, Opera).
+1. Open Google Chrome (or any Chromium-based browser like Helium, Brave, Edge, Opera).
 2. Navigate to `chrome://extensions/`.
 3. Enable **Developer mode** (toggle in the top-right corner).
 4. Click **Load unpacked** in the top-left corner.
