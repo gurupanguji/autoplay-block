@@ -4,35 +4,39 @@ A lightweight, robust, and stealthy Chrome Extension (Manifest V3) that stops au
 
 ## How It Works
 
-Traditional autoplay blockers often fail because websites use dynamic element injection, custom media players, or place media elements inside isolated **Shadow DOMs**. This extension solves these issues by intercepting browser-native media behaviors at the prototype level.
+Traditional autoplay blockers often fail because websites use dynamic element injection, custom media players, or place media elements inside isolated **Shadow DOMs** or **Child Frames**. This extension solves these issues by intercepting browser-native media behaviors and event paths at the prototype and instance levels.
 
 ### Key Technical Mechanisms
 
 1. **Main World Execution (`world: "MAIN"`)**
    The extension injects `content.js` directly into the page's execution context (the Main World) rather than the standard extension Isolated World. This allows the extension to modify prototype objects (`HTMLMediaElement.prototype`) that the page's own scripts interact with.
 
-2. **Prototype `play()` Interception**
-   The extension intercepts `HTMLMediaElement.prototype.play`. When a site attempts to play a video or audio file:
-   - It checks if the call was triggered by a genuine user interaction (using `navigator.userActivation` and local event listeners).
-   - If user activation is absent, it forces a `.pause()` and rejects the promise with a `NotAllowedError` (`DOMException`), simulating native browser block behaviors.
+2. **Recursive Window & Frame Trapping**
+   Injected scripts automatically propagate through all frame hierarchies. Using `"match_about_blank": true`, the extension injects into dynamic blank/srcdoc frames. We also defensively override getters on `HTMLIFrameElement`, `HTMLFrameElement`, `HTMLObjectElement`, and `HTMLEmbedElement` prototypes to synchronously lock down child windows before page scripts can steal clean prototypes.
 
-3. **Disabling Native `autoplay` Property**
-   It overrides the `autoplay` property descriptor on `HTMLMediaElement.prototype`. Regardless of what value a site assigns to it, the property getter always returns `false`. This prevents the browser engine from triggering native playback on elements created with `<video autoplay>`.
+3. **Instance Property Shadowing Prevention**
+   Many scripts bypass prototype modifications by defining native methods directly on video element instances (e.g. `Object.defineProperty(video, 'play', { value: nativePlay })`). The extension intercepts `Object.defineProperty` on `HTMLMediaElement` instances to block this shadowing vector.
 
-4. **Shadow DOM Trapping (`attachShadow` Overriding)**
-   Modern websites wrap players inside Shadow DOMs to encapsulate styling and prevent extensions from styling or selecting them. The extension overrides `Element.prototype.attachShadow` to capture dynamically created ShadowRoots and attach `MutationObserver` trackers to them, ensuring elements inside Shadow DOMs are neutralized as soon as they appear.
+4. **Instant Creation Traps**
+   We override `document.createElement` and `document.createElementNS` to neutralize media elements synchronously at the exact moment they are created in JavaScript memory, preventing players from setting up autoplay configurations before they are returned to the caller script.
 
-5. **Stealth/Anti-Detection**
-   Many websites look for extension-overridden properties by checking their string representation (`Function.prototype.toString()`). The extension overrides `.toString()` on modified methods (`play` and `attachShadow`) to output native representations (e.g. `function play() { [native code] }`), hiding the extension from detection scripts.
+5. **Locked Non-Configurable Overrides**
+   All prototype hooks (`play`, `autoplay`, `setAttribute`, `attachShadow`, `contentWindow`, `contentDocument`) are defined using non-configurable and non-writable descriptors. Webpages cannot delete, overwrite, or redefine them.
 
-6. **Smart User Interaction Window**
-   Captures window events (`click`, `keydown`, `mousedown`, `pointerdown`, `touchend`) to register a local interaction timestamp. If a play action occurs within 3 seconds of a physical interaction, it is permitted, keeping desired plays functional.
+6. **Absolute Fail-Safe Capturing Listener**
+   A global `play` event capturing listener is registered at the `window` level of all hooked contexts. When any video or audio element begins playing:
+   - It captures the event first (before any page scripts can execute event prevention).
+   - It resolves the target via `e.composedPath()[0]` to traverse Shadow DOM boundaries.
+   - It pauses the element if the play action is not user-initiated.
+
+7. **Strict Trusted User Interaction Filter**
+   We listen for physical interactions (`click`, `keydown`, `mousedown`, `pointerdown`, `touchend`) on the window and record a timestamp only if `e.isTrusted === true`, filtering out script-dispatched programmatic events. We ignore `navigator.userActivation.isActive` to prevent the browser from carrying over activation states from navigation clicks or reloads.
 
 ## Installation
 
 To run this extension locally:
 
-1. Open Google Chrome (or any Chromium-based browser like Helium, Brave, Edge, Opera).
+1. Open Google Chrome (or any Chromium-based browser).
 2. Navigate to `chrome://extensions/`.
 3. Enable **Developer mode** (toggle in the top-right corner).
 4. Click **Load unpacked** in the top-left corner.
@@ -41,6 +45,5 @@ To run this extension locally:
 
 ## Files in this Repository
 
-- **[manifest.json](manifest.json)**: Extension configurations (Manifest V3), registering the content script to load at `document_start` in all frames within the main world.
-- **[content.js](content.js)**: The core script that overrides prototypes, watches the DOM, and implements the interaction filters.
-- **[.gitignore](.gitignore)**: Prevents OS/IDE metadata from being tracked in git.
+- **[manifest.json](manifest.json)**: Extension configurations (Manifest V3), registering the content script to load at `document_start` in all frames, including blank frames.
+- **[content.js](content.js)**: The core script that overrides prototypes, hooks frames, traps element creation, and enforces interaction checks.
