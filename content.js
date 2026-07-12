@@ -102,9 +102,11 @@
                 try {
                   const originalElementQuerySelectorAll = win.Element.prototype.querySelectorAll;
                   originalElementQuerySelectorAll.call(node, 'iframe, frame, object, embed').forEach(frame => {
-                    if (frame.contentWindow) {
-                      applyOverridesToWindow(frame.contentWindow);
-                    }
+                    try {
+                      if (frame.contentWindow) {
+                        applyOverridesToWindow(frame.contentWindow);
+                      }
+                    } catch (err) {}
                   });
                 } catch (e) {}
               }
@@ -146,9 +148,11 @@
                 try {
                   const originalElementQuerySelectorAll = win.Element.prototype.querySelectorAll;
                   originalElementQuerySelectorAll.call(node, 'iframe, frame, object, embed').forEach(frame => {
-                    if (frame.contentWindow) {
-                      applyOverridesToWindow(frame.contentWindow);
-                    }
+                    try {
+                      if (frame.contentWindow) {
+                        applyOverridesToWindow(frame.contentWindow);
+                      }
+                    } catch (err) {}
                   });
                 } catch (err) {}
               }
@@ -165,10 +169,12 @@
 
   // Apply overrides to a specific window context (main page or iframe)
   function applyOverridesToWindow(win) {
-    if (!win || win._autoplayBlockerHooked) return;
-    win._autoplayBlockerHooked = true;
+    if (!win) return;
 
     try {
+      if (win._autoplayBlockerHooked) return;
+      win._autoplayBlockerHooked = true;
+
       const mediaProto = win.HTMLMediaElement.prototype;
       const originalPlay = mediaProto.play;
       const originalPause = mediaProto.pause;
@@ -366,9 +372,13 @@
         const originalGet = descriptorWindow.get;
         originalDefineProperty(proto, 'contentWindow', {
           get() {
-            const win = originalGet.call(this);
-            if (win) applyOverridesToWindow(win);
-            return win;
+            try {
+              const win = originalGet.call(this);
+              if (win) applyOverridesToWindow(win);
+              return win;
+            } catch (e) {
+              return originalGet.call(this);
+            }
           },
           configurable: false,
           enumerable: true
@@ -382,9 +392,13 @@
         const originalGet = descriptorDoc.get;
         originalDefineProperty(proto, 'contentDocument', {
           get() {
-            const doc = originalGet.call(this);
-            if (doc && doc.defaultView) applyOverridesToWindow(doc.defaultView);
-            return doc;
+            try {
+              const doc = originalGet.call(this);
+              if (doc && doc.defaultView) applyOverridesToWindow(doc.defaultView);
+              return doc;
+            } catch (e) {
+              return originalGet.call(this);
+            }
           },
           configurable: false,
           enumerable: true
@@ -407,13 +421,15 @@
     const originalWindowOpen = window.open;
     originalDefineProperty(window, 'open', {
       value: function () {
-        const win = originalWindowOpen.apply(this, arguments);
-        if (win) {
-          try {
+        try {
+          const win = originalWindowOpen.apply(this, arguments);
+          if (win) {
             applyOverridesToWindow(win);
-          } catch (e) {}
+          }
+          return win;
+        } catch (e) {
+          return originalWindowOpen.apply(this, arguments);
         }
-        return win;
       },
       writable: false,
       configurable: false,
@@ -427,9 +443,11 @@
       const originalQuerySelectorAll = Document.prototype.querySelectorAll;
       originalQuerySelectorAll.call(document, 'video, audio').forEach(neutralizeElement);
       originalQuerySelectorAll.call(document, 'iframe, frame, object, embed').forEach(frame => {
-        if (frame.contentWindow) {
-          applyOverridesToWindow(frame.contentWindow);
-        }
+        try {
+          if (frame.contentWindow) {
+            applyOverridesToWindow(frame.contentWindow);
+          }
+        } catch (err) {}
       });
     } catch (e) {}
   };
