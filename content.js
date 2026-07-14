@@ -13,6 +13,40 @@
   const OriginalWeakSet = WeakSet;
   const OriginalWeakMap = WeakMap;
 
+  // Safe apply and call helpers to be completely immune to page scripts overriding Function.prototype.apply/call
+  const originalReflectApply = typeof Reflect !== 'undefined' ? Reflect.apply : null;
+  const safeApply = originalReflectApply 
+    ? (fn, thisArg, args) => originalReflectApply(fn, thisArg, args)
+    : Function.prototype.call.bind(Function.prototype.apply);
+
+  const safeCall = originalReflectApply
+    ? (fn, thisArg, ...args) => originalReflectApply(fn, thisArg, args)
+    : Function.prototype.call.bind(Function.prototype.call);
+
+  // Safe WeakMap and WeakSet helpers
+  const originalWeakMapHas = WeakMap.prototype.has;
+  const originalWeakMapGet = WeakMap.prototype.get;
+  const originalWeakMapSet = WeakMap.prototype.set;
+  const originalWeakSetHas = WeakSet.prototype.has;
+  const originalWeakSetAdd = WeakSet.prototype.add;
+
+  const safeWeakMapHas = (map, key) => safeCall(originalWeakMapHas, map, key);
+  const safeWeakMapGet = (map, key) => safeCall(originalWeakMapGet, map, key);
+  const safeWeakMapSet = (map, key, value) => safeCall(originalWeakMapSet, map, key, value);
+  const safeWeakSetHas = (set, val) => safeCall(originalWeakSetHas, set, val);
+  const safeWeakSetAdd = (set, val) => safeCall(originalWeakSetAdd, set, val);
+
+  // Safe string helper
+  const originalToUpperCase = String.prototype.toUpperCase;
+  const safeToUpperCase = (str) => safeCall(originalToUpperCase, str);
+
+  // Safe Event helpers
+  const originalComposedPath = Event.prototype.composedPath;
+  const originalEventTargetDescriptor = originalGetOwnPropertyDescriptor(Event.prototype, 'target');
+  const originalEventTargetGet = originalEventTargetDescriptor ? originalEventTargetDescriptor.get : null;
+  const originalEventIsTrustedDescriptor = originalGetOwnPropertyDescriptor(Event.prototype, 'isTrusted');
+  const originalEventIsTrustedGet = originalEventIsTrustedDescriptor ? originalEventIsTrustedDescriptor.get : null;
+
   const originalAddEventListener = EventTarget.prototype.addEventListener;
   const originalRemoveAttribute = Element.prototype.removeAttribute;
   const originalSetAttribute = Element.prototype.setAttribute;
@@ -27,15 +61,18 @@
   // Track user interactions to safely allow user-triggered play
   let lastUserInteraction = 0;
   const updateInteraction = (e) => {
-    if (e && e.isTrusted) {
-      lastUserInteraction = originalDateNow();
+    if (e) {
+      const isTrusted = originalEventIsTrustedGet ? safeCall(originalEventIsTrustedGet, e) : e.isTrusted;
+      if (isTrusted) {
+        lastUserInteraction = originalDateNow();
+      }
     }
   };
 
   const interactionEvents = ['click', 'keydown', 'mousedown', 'pointerdown', 'touchend'];
-  interactionEvents.forEach(event => {
-    originalAddEventListener.call(window, event, updateInteraction, true);
-  });
+  for (let i = 0; i < interactionEvents.length; i++) {
+    safeCall(originalAddEventListener, window, interactionEvents[i], updateInteraction, true);
+  }
 
   function isUserInitiated() {
     return originalDateNow() - lastUserInteraction < 3000;
@@ -46,10 +83,10 @@
   const makeNativeToString = (fn, originalFn) => {
     if (!fn || !originalFn) return;
     try {
-      const originalString = originalFn.toString();
-      customToStringMap.set(fn, originalString);
+      const originalString = safeApply(originalFunctionToString, originalFn, []);
+      safeWeakMapSet(customToStringMap, fn, originalString);
       const customFnToString = function () { return originalString; };
-      customToStringMap.set(customFnToString, originalFunctionToString.toString());
+      safeWeakMapSet(customToStringMap, customFnToString, safeApply(originalFunctionToString, originalFunctionToString, []));
       originalDefineProperty(fn, 'toString', {
         value: customFnToString,
         configurable: true,
@@ -63,13 +100,17 @@
     try {
       const winFunctionProto = win.Function.prototype;
       const winOriginalToString = winFunctionProto.toString;
+      if (typeof winOriginalToString !== 'function') return;
+
       const winCustomFunctionToString = function () {
-        if (customToStringMap.has(this)) {
-          return customToStringMap.get(this);
+        if (this && (typeof this === 'object' || typeof this === 'function')) {
+          if (safeWeakMapHas(customToStringMap, this)) {
+            return safeWeakMapGet(customToStringMap, this);
+          }
         }
-        return winOriginalToString.apply(this, arguments);
+        return safeApply(winOriginalToString, this, arguments);
       };
-      customToStringMap.set(winCustomFunctionToString, winOriginalToString.toString());
+      safeWeakMapSet(customToStringMap, winCustomFunctionToString, safeApply(originalFunctionToString, winOriginalToString, []));
       originalDefineProperty(winFunctionProto, 'toString', {
         value: winCustomFunctionToString,
         writable: true,
@@ -81,12 +122,14 @@
 
   try {
     const customFunctionToString = function () {
-      if (customToStringMap.has(this)) {
-        return customToStringMap.get(this);
+      if (this && (typeof this === 'object' || typeof this === 'function')) {
+        if (safeWeakMapHas(customToStringMap, this)) {
+          return safeWeakMapGet(customToStringMap, this);
+        }
       }
-      return originalFunctionToString.apply(this, arguments);
+      return safeApply(originalFunctionToString, this, arguments);
     };
-    customToStringMap.set(customFunctionToString, originalFunctionToString.toString());
+    safeWeakMapSet(customToStringMap, customFunctionToString, safeApply(originalFunctionToString, originalFunctionToString, []));
     originalDefineProperty(Function.prototype, 'toString', {
       value: customFunctionToString,
       writable: true,
@@ -103,24 +146,24 @@
     if (!el) return;
     try {
       try {
-        originalRemoveAttribute.call(el, 'autoplay');
+        safeCall(originalRemoveAttribute, el, 'autoplay');
       } catch (e) {}
 
       if (originalAutoplayDescriptor && originalAutoplayDescriptor.set) {
         try {
-          originalAutoplayDescriptor.set.call(el, false);
+          safeCall(originalAutoplayDescriptor.set, el, false);
         } catch (e) {}
       }
 
       try {
-        originalPause.call(el);
+        safeCall(originalPause, el);
       } catch (e) {}
 
       try {
-        originalAddEventListener.call(el, 'play', function (e) {
+        safeCall(originalAddEventListener, el, 'play', function (e) {
           if (!isUserInitiated()) {
             try {
-              originalPause.call(el);
+              safeCall(originalPause, el);
             } catch (err) {}
           }
         }, { capture: true });
@@ -140,7 +183,7 @@
             for (let j = 0; j < addedNodes.length; j++) {
               const node = addedNodes[j];
               if (node.nodeType === 1) { // Node.ELEMENT_NODE
-                const tagName = node.tagName ? node.tagName.toUpperCase() : '';
+                const tagName = node.tagName ? safeToUpperCase(node.tagName) : '';
                 if (tagName === 'VIDEO' || tagName === 'AUDIO') {
                   neutralizeElement(node);
                 } else if (tagName === 'IFRAME' || tagName === 'FRAME' || tagName === 'OBJECT' || tagName === 'EMBED') {
@@ -153,10 +196,10 @@
                 
                 // Optimized single pass descendant query
                 try {
-                  const elements = originalElementQuerySelectorAll.call(node, 'video, audio, iframe, frame, object, embed');
+                  const elements = safeCall(originalElementQuerySelectorAll, node, 'video, audio, iframe, frame, object, embed');
                   for (let k = 0; k < elements.length; k++) {
                     const el = elements[k];
-                    const tag = el.tagName ? el.tagName.toUpperCase() : '';
+                    const tag = el.tagName ? safeToUpperCase(el.tagName) : '';
                     if (tag === 'VIDEO' || tag === 'AUDIO') {
                       neutralizeElement(el);
                     } else {
@@ -172,7 +215,7 @@
             }
           } else if (mutation.type === 'attributes') {
             const node = mutation.target;
-            if (node.tagName && (node.tagName.toUpperCase() === 'VIDEO' || node.tagName.toUpperCase() === 'AUDIO')) {
+            if (node.tagName && (safeToUpperCase(node.tagName) === 'VIDEO' || safeToUpperCase(node.tagName) === 'AUDIO')) {
               neutralizeElement(node);
             }
           }
@@ -194,7 +237,7 @@
             for (let j = 0; j < addedNodes.length; j++) {
               const node = addedNodes[j];
               if (node.nodeType === 1) {
-                const tagName = node.tagName ? node.tagName.toUpperCase() : '';
+                const tagName = node.tagName ? safeToUpperCase(node.tagName) : '';
                 if (tagName === 'VIDEO' || tagName === 'AUDIO') {
                   neutralizeElement(node);
                 } else if (tagName === 'IFRAME' || tagName === 'FRAME' || tagName === 'OBJECT' || tagName === 'EMBED') {
@@ -205,10 +248,10 @@
                   } catch (e) {}
                 }
                 try {
-                  const elements = originalElementQuerySelectorAll.call(node, 'video, audio, iframe, frame, object, embed');
+                  const elements = safeCall(originalElementQuerySelectorAll, node, 'video, audio, iframe, frame, object, embed');
                   for (let k = 0; k < elements.length; k++) {
                     const el = elements[k];
-                    const tag = el.tagName ? el.tagName.toUpperCase() : '';
+                    const tag = el.tagName ? safeToUpperCase(el.tagName) : '';
                     if (tag === 'VIDEO' || tag === 'AUDIO') {
                       neutralizeElement(el);
                     } else {
@@ -235,10 +278,10 @@
   // Apply overrides to a specific window context (main page or iframe)
   function applyOverridesToWindow(win) {
     if (!win) return;
-    if (hookedWindows.has(win)) return;
+    if (safeWeakSetHas(hookedWindows, win)) return;
 
     try {
-      hookedWindows.add(win);
+      safeWeakSetAdd(hookedWindows, win);
       
       // Test if same-origin / accessible (throws if cross-origin)
       const doc = win.document;
@@ -264,15 +307,15 @@
       // 1. Override play (writable and configurable for site compatibility)
       const customPlay = function () {
         if (!(this instanceof win.HTMLMediaElement)) {
-          return winOriginalPlay.apply(this, arguments);
+          return safeApply(winOriginalPlay, this, arguments);
         }
         if (isUserInitiated()) {
-          return winOriginalPlay.apply(this, arguments);
+          return safeApply(winOriginalPlay, this, arguments);
         }
         try {
-          winOriginalPause.call(this);
+          safeCall(winOriginalPause, this);
         } catch (e) {}
-        return originalPromiseReject.call(Promise,
+        return safeCall(originalPromiseReject, Promise,
           new originalDOMException("Autoplay blocked by extension.", "NotAllowedError")
         );
       };
@@ -309,11 +352,11 @@
         set(value) {
           if (originalAutoplayDescriptor && originalAutoplayDescriptor.set) {
             try {
-              originalAutoplayDescriptor.set.call(this, false);
+              safeCall(originalAutoplayDescriptor.set, this, false);
             } catch (e) {}
           }
           try {
-            originalRemoveAttribute.call(this, 'autoplay');
+            safeCall(originalRemoveAttribute, this, 'autoplay');
           } catch (e) {}
         },
         configurable: true,
@@ -322,12 +365,12 @@
 
       // 3. Override setAttribute on Element.prototype (shadowing for safety)
       const customSetAttribute = function (name, value) {
-        if (name && typeof name === 'string' && name.toLowerCase() === 'autoplay') {
+        if (name && typeof name === 'string' && safeToUpperCase(name) === 'AUTOPLAY') {
           if (this instanceof win.HTMLMediaElement) {
             return;
           }
         }
-        return winOriginalSetAttribute.apply(this, arguments);
+        return safeApply(winOriginalSetAttribute, this, arguments);
       };
       makeNativeToString(customSetAttribute, winOriginalSetAttribute);
       
@@ -341,7 +384,7 @@
       // 4. Override attachShadow
       if (winOriginalAttachShadow) {
         const customAttachShadow = function (init) {
-          const shadowRoot = winOriginalAttachShadow.call(this, init);
+          const shadowRoot = safeCall(winOriginalAttachShadow, this, init);
           if (shadowRoot) {
             observeDOM(shadowRoot);
           }
@@ -362,8 +405,8 @@
         try {
           const winOriginalCreateElement = win.document.createElement;
           const customCreateElement = function (tagName) {
-            const el = winOriginalCreateElement.apply(this, arguments);
-            if (el && tagName && typeof tagName === 'string' && (tagName.toLowerCase() === 'video' || tagName.toLowerCase() === 'audio')) {
+            const el = safeApply(winOriginalCreateElement, this, arguments);
+            if (el && tagName && typeof tagName === 'string' && (safeToUpperCase(tagName) === 'VIDEO' || safeToUpperCase(tagName) === 'AUDIO')) {
               neutralizeElement(el);
             }
             return el;
@@ -378,8 +421,8 @@
 
           const winOriginalCreateElementNS = win.document.createElementNS;
           const customCreateElementNS = function (namespaceURI, qualifiedName) {
-            const el = winOriginalCreateElementNS.apply(this, arguments);
-            if (el && qualifiedName && typeof qualifiedName === 'string' && (qualifiedName.toLowerCase() === 'video' || qualifiedName.toLowerCase() === 'audio')) {
+            const el = safeApply(winOriginalCreateElementNS, this, arguments);
+            if (el && qualifiedName && typeof qualifiedName === 'string' && (safeToUpperCase(qualifiedName) === 'VIDEO' || safeToUpperCase(qualifiedName) === 'AUDIO')) {
               neutralizeElement(el);
             }
             return el;
@@ -401,7 +444,7 @@
           if (isMediaOrProto(obj) && (prop === 'play' || prop === 'autoplay')) {
             return obj;
           }
-          return winOriginalObjectDefineProperty.apply(this, arguments);
+          return safeApply(winOriginalObjectDefineProperty, this, arguments);
         };
         makeNativeToString(customObjectDefineProperty, winOriginalObjectDefineProperty);
         win.Object.defineProperty = customObjectDefineProperty;
@@ -421,10 +464,10 @@
               }
             }
             if (modified) {
-              return winOriginalObjectDefineProperties.call(this, obj, props);
+              return safeCall(winOriginalObjectDefineProperties, this, obj, props);
             }
           }
-          return winOriginalObjectDefineProperties.apply(this, arguments);
+          return safeApply(winOriginalObjectDefineProperties, this, arguments);
         };
         makeNativeToString(customObjectDefineProperties, winOriginalObjectDefineProperties);
         win.Object.defineProperties = customObjectDefineProperties;
@@ -435,7 +478,7 @@
             if (isMediaOrProto(target) && (propertyKey === 'play' || propertyKey === 'autoplay')) {
               return false;
             }
-            return winOriginalReflectDefineProperty.apply(this, arguments);
+            return safeApply(winOriginalReflectDefineProperty, this, arguments);
           };
           makeNativeToString(customReflectDefineProperty, winOriginalReflectDefineProperty);
           win.Reflect.defineProperty = customReflectDefineProperty;
@@ -449,7 +492,7 @@
 
       if (win.document) {
         try {
-          const preExistingVideos = originalDocumentQuerySelectorAll.call(win.document, 'video, audio');
+          const preExistingVideos = safeCall(originalDocumentQuerySelectorAll, win.document, 'video, audio');
           for (let i = 0; i < preExistingVideos.length; i++) {
             neutralizeElement(preExistingVideos[i]);
           }
@@ -463,13 +506,13 @@
   function registerGlobalPlayListener(win) {
     try {
       const winOriginalPause = win.HTMLMediaElement.prototype.pause || originalPause;
-      originalAddEventListener.call(win, 'play', function (e) {
-        const path = e.composedPath ? e.composedPath() : [];
-        const target = path.length > 0 ? path[0] : e.target;
-        if (target && (target.tagName && (target.tagName.toUpperCase() === 'VIDEO' || target.tagName.toUpperCase() === 'AUDIO'))) {
+      safeCall(originalAddEventListener, win, 'play', function (e) {
+        const path = originalComposedPath ? safeCall(originalComposedPath, e) : [];
+        const target = path.length > 0 ? path[0] : (originalEventTargetGet ? safeCall(originalEventTargetGet, e) : e.target);
+        if (target && (target.tagName && (safeToUpperCase(target.tagName) === 'VIDEO' || safeToUpperCase(target.tagName) === 'AUDIO'))) {
           if (!isUserInitiated()) {
             try {
-              winOriginalPause.call(target);
+              safeCall(winOriginalPause, target);
             } catch (err) {}
           }
         }
@@ -486,11 +529,11 @@
         originalDefineProperty(proto, 'contentWindow', {
           get() {
             try {
-              const win = originalGet.call(this);
+              const win = safeCall(originalGet, this);
               if (win) applyOverridesToWindow(win);
               return win;
             } catch (e) {
-              return originalGet.call(this);
+              return safeCall(originalGet, this);
             }
           },
           configurable: true,
@@ -506,11 +549,11 @@
         originalDefineProperty(proto, 'contentDocument', {
           get() {
             try {
-              const doc = originalGet.call(this);
+              const doc = safeCall(originalGet, this);
               if (doc && doc.defaultView) applyOverridesToWindow(doc.defaultView);
               return doc;
             } catch (e) {
-              return originalGet.call(this);
+              return safeCall(originalGet, this);
             }
           },
           configurable: true,
@@ -535,13 +578,13 @@
     originalDefineProperty(window, 'open', {
       value: function () {
         try {
-          const win = originalWindowOpen.apply(this, arguments);
+          const win = safeApply(originalWindowOpen, this, arguments);
           if (win) {
             applyOverridesToWindow(win);
           }
           return win;
         } catch (e) {
-          return originalWindowOpen.apply(this, arguments);
+          return safeApply(originalWindowOpen, this, arguments);
         }
       },
       writable: true,
@@ -553,11 +596,11 @@
   // 4. Initial scan & DOMContentLoaded hooking
   const scanAndNeutralize = () => {
     try {
-      const elements = originalDocumentQuerySelectorAll.call(document, 'video, audio');
+      const elements = safeCall(originalDocumentQuerySelectorAll, document, 'video, audio');
       for (let i = 0; i < elements.length; i++) {
         neutralizeElement(elements[i]);
       }
-      const frames = originalDocumentQuerySelectorAll.call(document, 'iframe, frame, object, embed');
+      const frames = safeCall(originalDocumentQuerySelectorAll, document, 'iframe, frame, object, embed');
       for (let i = 0; i < frames.length; i++) {
         try {
           const frame = frames[i];
@@ -570,5 +613,5 @@
   };
 
   scanAndNeutralize();
-  originalAddEventListener.call(document, 'DOMContentLoaded', scanAndNeutralize);
+  safeCall(originalAddEventListener, document, 'DOMContentLoaded', scanAndNeutralize);
 })();
