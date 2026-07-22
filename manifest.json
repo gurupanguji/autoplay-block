@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Autoplay Blocker",
-  "version": "1.28",
+  "version": "1.30",
   "description": "Forces all video elements to pause on load.",
   "content_scripts": [
     {
@@ -10,6 +10,20 @@
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,
+      "exclude_matches": [
+        "*://meet.google.com/*",
+        "*://*.meet.google.com/*",
+        "*://teams.microsoft.com/*",
+        "*://*.teams.microsoft.com/*",
+        "*://teams.live.com/*",
+        "*://*.teams.live.com/*",
+        "*://teams.cloud.microsoft/*",
+        "*://*.teams.cloud.microsoft/*",
+        "*://zoom.us/*",
+        "*://*.zoom.us/*",
+        "*://zoom.com/*",
+        "*://*.zoom.com/*"
+      ],
       "world": "MAIN"
     }
   ]
