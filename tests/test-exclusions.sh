@@ -9,23 +9,37 @@ const manifestPath = process.argv[2];
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const script = manifest.content_scripts.find((entry) => entry.js.includes('content.js'));
 const patterns = script && script.exclude_matches || [];
-const requiredHosts = [
-  'meet.google.com',
-  'teams.microsoft.com',
-  'teams.live.com',
-  'teams.cloud.microsoft',
-  'zoom.us',
-  'zoom.com'
+const expectedPatterns = [
+  '*://meet.google.com/*',
+  '*://*.meet.google.com/*',
+  '*://teams.microsoft.com/*',
+  '*://*.teams.microsoft.com/*',
+  '*://teams.live.com/*',
+  '*://*.teams.live.com/*',
+  '*://teams.cloud.microsoft/*',
+  '*://*.teams.cloud.microsoft/*',
+  '*://zoom.us/*',
+  '*://*.zoom.us/*',
+  '*://zoom.com/*',
+  '*://*.zoom.com/*'
 ];
 
-for (const host of requiredHosts) {
-  for (const pattern of [`*://${host}/*`, `*://*.${host}/*`]) {
-    if (!patterns.includes(pattern)) throw new Error(`Missing exclusion: ${pattern}`);
-  }
+if (JSON.stringify(patterns) !== JSON.stringify(expectedPatterns)) {
+  throw new Error(`Unexpected exclude_matches: ${JSON.stringify(patterns)}`);
+}
+
+function matchesPattern(pattern, hostname) {
+  const exact = pattern.match(/^\*:\/\/([^/*]+)\/\*$/);
+  if (exact) return hostname === exact[1];
+
+  const subdomain = pattern.match(/^\*:\/\/\*\.([^/*]+)\/\*$/);
+  if (subdomain) return hostname.endsWith(`.${subdomain[1]}`);
+
+  throw new Error(`Unsupported exclusion pattern: ${pattern}`);
 }
 
 function isExcluded(hostname) {
-  return requiredHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+  return patterns.some((pattern) => matchesPattern(pattern, hostname));
 }
 
 for (const [hostname, description] of [
