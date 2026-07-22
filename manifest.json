@@ -10,6 +10,20 @@
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,
+      "exclude_matches": [
+        "*://meet.google.com/*",
+        "*://*.meet.google.com/*",
+        "*://teams.microsoft.com/*",
+        "*://*.teams.microsoft.com/*",
+        "*://teams.live.com/*",
+        "*://*.teams.live.com/*",
+        "*://teams.cloud.microsoft/*",
+        "*://*.teams.cloud.microsoft/*",
+        "*://zoom.us/*",
+        "*://*.zoom.us/*",
+        "*://zoom.com/*",
+        "*://*.zoom.com/*"
+      ],
       "world": "MAIN"
     }
   ]
