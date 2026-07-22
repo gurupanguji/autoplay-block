@@ -28,17 +28,21 @@ function isExcluded(hostname) {
   return requiredHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
 }
 
-for (const hostname of [
-  'meet.google.com',
-  'eu-west1.meet.google.com',
-  'teams.microsoft.com',
-  'foo.teams.live.com',
-  'teams.cloud.microsoft',
-  'zoom.us',
-  'us02web.zoom.us',
-  'zoom.com'
+for (const [hostname, description] of [
+  ['meet.google.com', 'exact meet.google.com host'],
+  ['eu-west1.meet.google.com', 'meet.google.com subdomain'],
+  ['teams.microsoft.com', 'exact teams.microsoft.com host'],
+  ['foo.teams.microsoft.com', 'teams.microsoft.com subdomain'],
+  ['teams.live.com', 'exact teams.live.com host'],
+  ['foo.teams.live.com', 'teams.live.com subdomain'],
+  ['teams.cloud.microsoft', 'exact teams.cloud.microsoft host'],
+  ['foo.teams.cloud.microsoft', 'teams.cloud.microsoft subdomain'],
+  ['zoom.us', 'exact zoom.us host'],
+  ['us02web.zoom.us', 'zoom.us subdomain'],
+  ['zoom.com', 'exact zoom.com host'],
+  ['us02web.zoom.com', 'zoom.com subdomain']
 ]) {
-  if (!isExcluded(hostname)) throw new Error(`Expected excluded host: ${hostname}`);
+  if (!isExcluded(hostname)) throw new Error(`Expected excluded host (${description}): ${hostname}`);
 }
 
 for (const hostname of [
