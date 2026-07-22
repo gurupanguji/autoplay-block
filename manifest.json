@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Autoplay Blocker",
-  "version": "1.28",
+  "version": "1.30",
   "description": "Forces all video elements to pause on load.",
   "content_scripts": [
     {
