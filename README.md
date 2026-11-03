@@ -20,8 +20,8 @@ Traditional autoplay blockers often fail because websites use dynamic element in
 4. **Instant Creation Traps**
    We override `document.createElement` and `document.createElementNS` to neutralize media elements synchronously at the exact moment they are created in JavaScript memory, preventing players from setting up autoplay configurations before they are returned to the caller script.
 
-5. **Locked Non-Configurable Overrides**
-   All prototype hooks (`play`, `autoplay`, `setAttribute`, `attachShadow`, `contentWindow`, `contentDocument`) are defined using non-configurable and non-writable descriptors. Webpages cannot delete, overwrite, or redefine them.
+5. **Protected Overrides**
+   Hooks (`play`, `autoplay`, `setAttribute`, `attachShadow`, `contentWindow`, `contentDocument`) are installed as configurable, writable properties on purpose, because non-configurable locks break legitimate sites. Page attempts to redefine `play` or `autoplay` on media elements are intercepted via `Object.defineProperty`, `defineProperties`, and `Reflect.defineProperty`.
 
 6. **Absolute Fail-Safe Capturing Listener**
    A global `play` event capturing listener is registered at the `window` level of all hooked contexts. When any video or audio element begins playing:
@@ -32,18 +32,41 @@ Traditional autoplay blockers often fail because websites use dynamic element in
 7. **Strict Trusted User Interaction Filter**
    We listen for physical interactions (`click`, `keydown`, `mousedown`, `pointerdown`, `touchend`) on the window and record a timestamp only if `e.isTrusted === true`, filtering out script-dispatched programmatic events. We ignore `navigator.userActivation.isActive` to prevent the browser from carrying over activation states from navigation clicks or reloads.
 
+## Controls
+
+- **Toolbar popup**: a global on/off switch, and a per-site switch for the current tab. Reload the tab to apply a change. The badge shows `OFF` when blocking is globally disabled.
+- **Options page**: add or remove allowlisted sites. An entry such as `example.com` also covers its subdomains. Built-in exclusions are listed read-only.
+- **Built-in exclusions**: Google Meet, Microsoft Teams, Zoom, Discord, Slack (`app.slack.com`), Webex, Whereby, and Jitsi (`meet.jit.si`), where blocking breaks calls. Edit `DEFAULT_EXCLUDED_HOSTS` in `src/shared/settings.js` to change them.
+
+Settings live in `chrome.storage.sync`. The background service worker registers the content script with `chrome.scripting` and passes the allowlist as `excludeMatches`, so excluded sites never get the script at all. `declarativeNetRequest` is not used: it can only block or modify network requests, and cannot stop a content script from running.
+
 ## Installation
 
-To run this extension locally:
+1. `pnpm install && pnpm build` (`content.js` is generated from `src/content/`).
+2. Open `chrome://extensions/` in Chrome or another Chromium browser and enable **Developer mode**.
+3. Click **Load unpacked** and select this folder.
+4. After rebuilding, click the reload icon on the extension card.
 
-1. Open Google Chrome (or any Chromium-based browser).
-2. Navigate to `chrome://extensions/`.
-3. Enable **Developer mode** (toggle in the top-right corner).
-4. Click **Load unpacked** in the top-left corner.
-5. Select the `autoplay-block` folder directory.
-6. The extension is now active and blocking autoplay on all websites!
+## Development
+
+- `pnpm build`: bundle `src/content/index.js` into `content.js` and sync the manifest version from `package.json`.
+- `pnpm test`: unit tests for the settings helpers and a bundle check.
+- Bump the version with `pnpm version <patch|minor|major> --no-git-tag-version`, then `pnpm build`.
+- Swallowed errors are logged with `console.debug` and an `[autoplay-blocker]` prefix. Enable the **Verbose** level in DevTools to see them.
+
+## Known limitations
+
+- Sites that rely on muted autoplay for core features (some feeds and previews) will show paused videos. Allow those sites from the popup.
+- Sites that detect altered native functions may misbehave. Allow them, and please open an issue.
+- User activation is honored for `ACTIVATION_WINDOW_MS` (3 seconds) after a trusted click, key, or touch.
+- Chrome and Chromium only for now. Firefox would need MV3 `world: "MAIN"` support (Firefox 128+) and `browser_specific_settings`; it has not been tested.
+- Changes to the allowlist apply to pages loaded after the change.
 
 ## Files in this Repository
 
-- **[manifest.json](manifest.json)**: Extension configurations (Manifest V3), registering the content script to load at `document_start` in all frames, including blank frames.
-- **[content.js](content.js)**: The core script that overrides prototypes, hooks frames, traps element creation, and enforces interaction checks.
+- `manifest.json`: MV3 config (version is generated).
+- `background.js`: service worker that registers the content script and applies the allowlist.
+- `src/content/`: content script source modules. `content.js`: generated bundle, committed so Load unpacked works.
+- `src/shared/settings.js`: host normalization, exclusion patterns, storage helpers.
+- `src/popup/`, `src/options/`: toolbar popup and options page.
+- `scripts/`: build and agent delegation helpers. `tests/`: unit tests.

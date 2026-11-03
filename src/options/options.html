@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autoplay Blocker settings</title>
+  <link rel="stylesheet" href="options.css">
+  <script type="module" src="options.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Autoplay Blocker settings</h1>
+    <label class="global-setting" for="global-toggle">
+      <span><strong>Block autoplay everywhere</strong><small>Turn off blocking on all sites.</small></span>
+      <input id="global-toggle" type="checkbox">
+    </label>
+    <section aria-labelledby="allowlist-heading">
+      <h2 id="allowlist-heading">Allowed sites</h2>
+      <p>Autoplay is allowed on these sites. Subdomains are included.</p>
+      <form id="add-form">
+        <label for="host-input">Hostname or URL</label>
+        <div class="add-row">
+          <input id="host-input" name="host" type="text" autocomplete="url" placeholder="example.com" required>
+          <button type="submit">Add site</button>
+        </div>
+        <p id="error" class="error" role="alert"></p>
+      </form>
+      <ul id="allowlist" aria-live="polite"></ul>
+      <p id="empty" hidden>No sites on the allowlist.</p>
+    </section>
+    <section aria-labelledby="defaults-heading">
+      <h2 id="defaults-heading">Built-in exclusions</h2>
+      <p>Calls and meeting sites are always excluded. Subdomains are included.</p>
+      <ul id="defaults"></ul>
+    </section>
+  </main>
+</body>
+</html>
