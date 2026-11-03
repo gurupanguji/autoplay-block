@@ -19,7 +19,7 @@ function syncRegistration() {
     const script = {
       id: SCRIPT_ID, js: ['content.js'], matches: ['<all_urls>'],
       excludeMatches: buildExcludeMatches(settings.allowlist), runAt: 'document_start',
-      allFrames: true, matchAboutBlank: true, world: 'MAIN', persistAcrossSessions: true,
+      allFrames: true, matchOriginAsFallback: true, world: 'MAIN', persistAcrossSessions: true,
     };
     try {
       await chrome.scripting.registerContentScripts([script]);

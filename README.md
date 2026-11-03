@@ -12,7 +12,7 @@ Traditional autoplay blockers often fail because websites use dynamic element in
    The extension injects `content.js` directly into the page's execution context (the Main World) rather than the standard extension Isolated World. This allows the extension to modify prototype objects (`HTMLMediaElement.prototype`) that the page's own scripts interact with.
 
 2. **Recursive Window & Frame Trapping**
-   Injected scripts automatically propagate through all frame hierarchies. Using `"match_about_blank": true`, the extension injects into dynamic blank/srcdoc frames. We also defensively override getters on `HTMLIFrameElement`, `HTMLFrameElement`, `HTMLObjectElement`, and `HTMLEmbedElement` prototypes to synchronously lock down child windows before page scripts can steal clean prototypes.
+   Injected scripts automatically propagate through all frame hierarchies. Using `matchOriginAsFallback: true` on the dynamically registered script, the extension injects into dynamic blank/srcdoc frames. We also defensively override getters on `HTMLIFrameElement`, `HTMLFrameElement`, `HTMLObjectElement`, and `HTMLEmbedElement` prototypes to synchronously lock down child windows before page scripts can steal clean prototypes.
 
 3. **Instance Property Shadowing Prevention**
    Many scripts bypass prototype modifications by defining native methods directly on video element instances (e.g. `Object.defineProperty(video, 'play', { value: nativePlay })`). The extension intercepts `Object.defineProperty` on `HTMLMediaElement` instances to block this shadowing vector.
